@@ -28,11 +28,6 @@ variable "db_bkp_max_count" {
   description = "Max backup count"
 }
 
-variable "clustername" {
-  type        = string
-  description = "Clustername"
-}
-
 variable "environment" {
   type        = string
   description = "Environment name used to suffix backup storage account"
