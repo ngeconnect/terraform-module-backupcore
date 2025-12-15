@@ -11,8 +11,8 @@ variable "db_bkp_rg" {
 }
 
 variable "db_backup_region" {
-  type        = map(any)
-  default     = { long = "francecentral", short = "frc" }
+  type        = string
+  default     = "francecentral"
   description = "Location of the resources this code is going to implement"
 }
 

@@ -4,14 +4,14 @@ data "azurerm_client_config" "current" {}
 # 0. Prérequis : RG de backup (si tu veux un RG dédié)
 resource "azurerm_resource_group" "backup_rg" {
   name     = var.db_bkp_rg
-  location = var.db_backup_region.long
+  location = var.db_backup_region
 }
 
 # 1. Backup Vault (UN SEUL pour tous les env)
 resource "azurerm_data_protection_backup_vault" "cluster_backup_vault" {
   name                = "backup-vault-${var.clustername}"   # ou nom fixe
   resource_group_name = var.db_bkp_rg                      # ou backup_rg.name si tu veux
-  location            = var.db_backup_region.long
+  location            = var.db_backup_region
   datastore_type      = "OperationalStore"
   redundancy          = "LocallyRedundant"
 
@@ -44,7 +44,7 @@ resource "azurerm_data_protection_backup_policy_kubernetes_cluster" "mongodb_pol
 resource "azurerm_storage_account" "backup_sa" {
   name                    = "aksbackup${var.environment}rsmartvault"
   resource_group_name     = var.db_bkp_rg
-  location                = var.db_backup_region.long
+  location                = var.db_backup_region
   account_tier            = "Standard"
   account_replication_type = "LRS"
 
