@@ -27,4 +27,3 @@ variable "db_bkp_max_count" {
   default     = 14
   description = "Max backup count"
 }
-
