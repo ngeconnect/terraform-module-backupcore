@@ -5,11 +5,6 @@ variable "clustername" {
 }
 
 
-variable "db_bkp_rg" {
-  type        = string
-  description = "Backup resource group"
-}
-
 variable "db_backup_region" {
   type        = string
   default     = "francecentral"
@@ -31,4 +26,9 @@ variable "db_bkp_max_count" {
 variable "environment" {
   type        = string
   description = "Environment name used to suffix backup storage account"
+}
+
+variable "backup_core_rg_name" {
+  type        = string
+  description = "Resource group dédié au Backup Core (Vault, Storage Account)"
 }
