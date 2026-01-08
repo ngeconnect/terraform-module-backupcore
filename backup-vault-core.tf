@@ -80,6 +80,10 @@ output "backup_sa_name" {
   value = azurerm_storage_account.backup_sa.name
 }
 
+output "backup_vault_principal_id" {
+  value = azurerm_data_protection_backup_vault.cluster_backup_vault.identity[0].principal_id
+}
+
 output "backup_container_name" {
   value = azurerm_storage_container.backup_container.name
 }
