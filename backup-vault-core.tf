@@ -90,9 +90,13 @@ resource "azurerm_kubernetes_cluster_trusted_access_role_binding" "backup_truste
 
 # 4. TOUS les Role Assignments d'infrastructure (DÉPLACÉS ICI)
 # Extension -> Storage
-resource "azurerm_role_assignment" "extension_storage_blob" {
+resource "azurerm_role_assignment" "extension_storage_access" {
+  for_each = toset([
+    "Storage Blob Data Contributor",
+    "Storage Account Contributor"
+  ])
   scope                = azurerm_storage_account.backup_sa.id
-  role_definition_name = "Storage Blob Data Contributor"
+  role_definition_name = each.value
   principal_id         = azurerm_kubernetes_cluster_extension.backup_extension.aks_assigned_identity[0].principal_id
 }
 
@@ -124,6 +128,7 @@ resource "azurerm_role_assignment" "vault_contributor_snapshots" {
   role_definition_name = "Contributor"
   principal_id         = azurerm_data_protection_backup_vault.cluster_backup_vault.identity[0].principal_id
 }
+
 
 
 # Outputs pour que les modules env les consomment
