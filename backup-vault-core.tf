@@ -1,6 +1,12 @@
 # Data source générique
 data "azurerm_client_config" "current" {}
 
+# Le cluster AKS (besoin pour son identité et l'extension)
+data "azurerm_kubernetes_cluster" "aks" {
+  name                = var.clustername
+  resource_group_name = var.rg_name
+}
+
 # 0. Prérequis : RG de backup (si tu veux un RG dédié)
 resource "azurerm_resource_group" "backup_core_rg" {
   name     = var.backup_core_rg_name
@@ -57,6 +63,52 @@ resource "azurerm_storage_container" "backup_container" {
   container_access_type = "private"
 
   depends_on = [azurerm_storage_account.backup_sa]
+}
+
+
+# 2. Extension AKS (DÉPLACÉ ICI : Unique par cluster)
+resource "azurerm_kubernetes_cluster_extension" "backup_extension" {
+  name           = "azure-aks-backup"
+  cluster_id     = data.azurerm_kubernetes_cluster.aks.id
+  extension_type = "microsoft.dataprotection.kubernetes"
+  configuration_settings = {
+    "configuration.backupStorageLocation.bucket"                = azurerm_storage_container.backup_container.name
+    "configuration.backupStorageLocation.config.storageAccount" = azurerm_storage_account.backup_sa.name
+    "configuration.backupStorageLocation.config.resourceGroup"  = var.backup_core_rg_name
+    "configuration.backupStorageLocation.config.subscriptionId" = data.azurerm_client_config.current.subscription_id
+    "credentials.tenantId"                                      = data.azurerm_client_config.current.tenant_id
+  }
+}
+
+# 3. Trusted Access (DÉPLACÉ ICI : Unique par lien Vault-Cluster)
+resource "azurerm_kubernetes_cluster_trusted_access_role_binding" "backup_trusted_access" {
+  kubernetes_cluster_id = data.azurerm_kubernetes_cluster.aks.id
+  name                  = "backup-trusted-access"
+  roles                 = ["Microsoft.DataProtection/backupVaults/backup-operator"]
+  source_resource_id    = azurerm_data_protection_backup_vault.cluster_backup_vault.id
+}
+
+# 4. TOUS les Role Assignments d'infrastructure (DÉPLACÉS ICI)
+# Extension -> Storage
+resource "azurerm_role_assignment" "extension_storage_blob" {
+  scope                = azurerm_storage_account.backup_sa.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_kubernetes_cluster_extension.backup_extension.aks_assigned_identity[0].principal_id
+}
+
+# Vault -> Cluster & Snapshots
+resource "azurerm_role_assignment" "vault_reader_cluster" {
+  scope                = data.azurerm_kubernetes_cluster.aks.id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_data_protection_backup_vault.cluster_backup_vault.identity[0].principal_id
+}
+
+# Cluster Identity -> Snapshots RG (Les 3 rôles essentiels)
+resource "azurerm_role_assignment" "cluster_snapshot_access" {
+  for_each = toset(["Contributor", "Disk Snapshot Contributor", "Data Operator for Managed Disks"])
+  scope                = azurerm_resource_group.backup_core_rg.id
+  role_definition_name = each.value
+  principal_id         = data.azurerm_kubernetes_cluster.aks.identity[0].principal_id
 }
 
 # Outputs pour que les modules env les consomment
