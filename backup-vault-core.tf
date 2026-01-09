@@ -72,11 +72,15 @@ resource "azurerm_kubernetes_cluster_extension" "backup_extension" {
   cluster_id     = data.azurerm_kubernetes_cluster.aks.id
   extension_type = "microsoft.dataprotection.kubernetes"
   configuration_settings = {
-    "configuration.backupStorageLocation.bucket"                = azurerm_storage_container.backup_container.name
-    "configuration.backupStorageLocation.config.storageAccount" = azurerm_storage_account.backup_sa.name
-    "configuration.backupStorageLocation.config.resourceGroup"  = var.backup_core_rg_name
-    "configuration.backupStorageLocation.config.subscriptionId" = data.azurerm_client_config.current.subscription_id
-    "credentials.tenantId"                                      = data.azurerm_client_config.current.tenant_id
+    "configuration.backupStorageLocation.bucket"                 = azurerm_storage_container.backup_container.name
+    "configuration.backupStorageLocation.config.storageAccount"  = azurerm_storage_account.backup_sa.name
+    "configuration.backupStorageLocation.config.resourceGroup"   = var.backup_core_rg_name
+    "configuration.backupStorageLocation.config.subscriptionId"  = data.azurerm_client_config.current.subscription_id
+
+    "configuration.volumeSnapshotLocation.config.resourceGroup"  = azurerm_resource_group.backup_core_rg.name
+    "configuration.volumeSnapshotLocation.config.subscriptionId" = data.azurerm_client_config.current.subscription_id
+
+    "credentials.tenantId"                                       = data.azurerm_client_config.current.tenant_id
   }
 }
 
