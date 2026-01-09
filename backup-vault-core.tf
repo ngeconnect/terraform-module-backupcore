@@ -111,6 +111,21 @@ resource "azurerm_role_assignment" "cluster_snapshot_access" {
   principal_id         = data.azurerm_kubernetes_cluster.aks.identity[0].principal_id
 }
 
+# Vault -> Lecture sur le RG de backup (Pour voir les snapshots)
+resource "azurerm_role_assignment" "vault_reader_snapshots" {
+  scope                = azurerm_resource_group.backup_core_rg.id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_data_protection_backup_vault.cluster_backup_vault.identity[0].principal_id
+}
+
+# Vault -> Contribution sur le RG de backup (Pour gérer les points de restauration)
+resource "azurerm_role_assignment" "vault_contributor_snapshots" {
+  scope                = azurerm_resource_group.backup_core_rg.id
+  role_definition_name = "Contributor"
+  principal_id         = azurerm_data_protection_backup_vault.cluster_backup_vault.identity[0].principal_id
+}
+
+
 # Outputs pour que les modules env les consomment
 output "backup_vault_id" {
   value = azurerm_data_protection_backup_vault.cluster_backup_vault.id
