@@ -38,3 +38,9 @@ variable "db_bkp_max_count" {
   default     = 14
   description = "Rétention : nombre de jours de conservation"
 }
+
+variable "included_namespaces" {
+  type        = list(string)
+  description = "Liste de tous les namespaces à sauvegarder (ex: ['ppr', 'ppma'])"
+  default     = []
+}

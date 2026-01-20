@@ -133,6 +133,36 @@ resource "azurerm_role_assignment" "vault_contributor_snapshots" {
   principal_id         = azurerm_data_protection_backup_vault.cluster_backup_vault.identity[0].principal_id
 }
 
+# 6. Instance de backup GLOBAL (Gère tous les namespaces d'un coup)
+resource "azurerm_data_protection_backup_instance_kubernetes_cluster" "global_backup" {
+  name                         = "db-backup-global-${var.clustername}" # Nouveau nom unique
+  location                     = var.db_backup_region
+  vault_id                     = azurerm_data_protection_backup_vault.cluster_backup_vault.id
+  kubernetes_cluster_id        = data.azurerm_kubernetes_cluster.aks.id
+  snapshot_resource_group_name = azurerm_resource_group.backup_core_rg.name
+  backup_policy_id             = azurerm_data_protection_backup_policy_kubernetes_cluster.mongodb_policy.id
+
+  backup_datasource_parameters {
+    # C'est ici que la magie opère : on prend la liste complète
+    included_namespaces              = var.included_namespaces
+    included_resource_types          = ["statefulSet", "deployment", "service", "persistentvolumeclaim", "secret", "configMap"]
+    cluster_scoped_resources_enabled = false
+    volume_snapshot_enabled          = true
+    label_selectors                  = []
+    excluded_namespaces              = []
+    excluded_resource_types          = []
+  }
+
+  # Dépendances explicites pour éviter les erreurs de droits lors de la création
+  depends_on = [
+    azurerm_role_assignment.extension_storage_access,
+    azurerm_role_assignment.vault_reader_cluster,
+    azurerm_role_assignment.cluster_snapshot_access,
+    azurerm_kubernetes_cluster_trusted_access_role_binding.backup_trusted_access
+  ]
+}
+
+
 
 
 # Outputs pour que les modules env les consomment
