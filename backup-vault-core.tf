@@ -145,8 +145,8 @@ resource "azurerm_data_protection_backup_instance_kubernetes_cluster" "global_ba
   backup_datasource_parameters {
     # C'est ici que la magie opère : on prend la liste complète
     included_namespaces              = var.included_namespaces
-    included_resource_types          = ["statefulSet", "deployment", "service", "persistentvolumeclaim", "secret", "configMap"]
-    cluster_scoped_resources_enabled = false
+    included_resource_types          = ["statefulSet", "service", "persistentvolumeclaim", "secret", "configMap"]
+    cluster_scoped_resources_enabled = true
     volume_snapshot_enabled          = true
     label_selectors                  = []
     excluded_namespaces              = []
