@@ -81,6 +81,13 @@ resource "azurerm_kubernetes_cluster_extension" "backup_extension" {
     "configuration.volumeSnapshotLocation.config.subscriptionId" = data.azurerm_client_config.current.subscription_id
 
     "credentials.tenantId"                                       = data.azurerm_client_config.current.tenant_id
+
+    # --- NOUVEAU : Augmentation des ressources ---
+    "resources.requests.cpu"    = "1000m"
+    "resources.limits.cpu"      = "2000m"
+    "resources.requests.memory" = "512Mi"
+    "resources.limits.memory"   = "304872"
+    "configuration.velero.defaultItemOperationTimeout" = "30m0s"
   }
 }
 
