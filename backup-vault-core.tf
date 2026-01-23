@@ -1,6 +1,12 @@
 # Data source générique
 data "azurerm_client_config" "current" {}
 
+# Le cluster AKS (besoin pour son identité et l'extension)
+data "azurerm_kubernetes_cluster" "aks" {
+  name                = var.clustername
+  resource_group_name = var.rg_name
+}
+
 # 0. Prérequis : RG de backup (si tu veux un RG dédié)
 resource "azurerm_resource_group" "backup_core_rg" {
   name     = var.backup_core_rg_name
@@ -59,6 +65,109 @@ resource "azurerm_storage_container" "backup_container" {
   depends_on = [azurerm_storage_account.backup_sa]
 }
 
+
+# 2. Extension AKS (DÉPLACÉ ICI : Unique par cluster)
+resource "azurerm_kubernetes_cluster_extension" "backup_extension" {
+  name           = "azure-aks-backup"
+  cluster_id     = data.azurerm_kubernetes_cluster.aks.id
+  extension_type = "microsoft.dataprotection.kubernetes"
+  configuration_settings = {
+    "configuration.backupStorageLocation.bucket"                 = azurerm_storage_container.backup_container.name
+    "configuration.backupStorageLocation.config.storageAccount"  = azurerm_storage_account.backup_sa.name
+    "configuration.backupStorageLocation.config.resourceGroup"   = var.backup_core_rg_name
+    "configuration.backupStorageLocation.config.subscriptionId"  = data.azurerm_client_config.current.subscription_id
+
+    "configuration.volumeSnapshotLocation.config.resourceGroup"  = azurerm_resource_group.backup_core_rg.name
+    "configuration.volumeSnapshotLocation.config.subscriptionId" = data.azurerm_client_config.current.subscription_id
+
+    "credentials.tenantId"                                       = data.azurerm_client_config.current.tenant_id
+
+ 
+    "configuration.velero.defaultItemOperationTimeout" = "30m0s"
+  }
+}
+
+# 3. Trusted Access (DÉPLACÉ ICI : Unique par lien Vault-Cluster)
+resource "azurerm_kubernetes_cluster_trusted_access_role_binding" "backup_trusted_access" {
+  kubernetes_cluster_id = data.azurerm_kubernetes_cluster.aks.id
+  name                  = "backup-trusted-access"
+  roles                 = ["Microsoft.DataProtection/backupVaults/backup-operator"]
+  source_resource_id    = azurerm_data_protection_backup_vault.cluster_backup_vault.id
+}
+
+# 4. TOUS les Role Assignments d'infrastructure (DÉPLACÉS ICI)
+# Extension -> Storage
+resource "azurerm_role_assignment" "extension_storage_access" {
+  for_each = toset([
+    "Storage Blob Data Contributor",
+    "Storage Account Contributor"
+  ])
+  scope                = azurerm_storage_account.backup_sa.id
+  role_definition_name = each.value
+  principal_id         = azurerm_kubernetes_cluster_extension.backup_extension.aks_assigned_identity[0].principal_id
+}
+
+# Vault -> Cluster & Snapshots
+resource "azurerm_role_assignment" "vault_reader_cluster" {
+  scope                = data.azurerm_kubernetes_cluster.aks.id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_data_protection_backup_vault.cluster_backup_vault.identity[0].principal_id
+}
+
+# Cluster Identity -> Snapshots RG (Les 3 rôles essentiels)
+resource "azurerm_role_assignment" "cluster_snapshot_access" {
+  for_each = toset(["Contributor", "Disk Snapshot Contributor", "Data Operator for Managed Disks"])
+  scope                = azurerm_resource_group.backup_core_rg.id
+  role_definition_name = each.value
+  principal_id         = data.azurerm_kubernetes_cluster.aks.identity[0].principal_id
+}
+
+# Vault -> Lecture sur le RG de backup (Pour voir les snapshots)
+resource "azurerm_role_assignment" "vault_reader_snapshots" {
+  scope                = azurerm_resource_group.backup_core_rg.id
+  role_definition_name = "Reader"
+  principal_id         = azurerm_data_protection_backup_vault.cluster_backup_vault.identity[0].principal_id
+}
+
+# Vault -> Contribution sur le RG de backup (Pour gérer les points de restauration)
+resource "azurerm_role_assignment" "vault_contributor_snapshots" {
+  scope                = azurerm_resource_group.backup_core_rg.id
+  role_definition_name = "Contributor"
+  principal_id         = azurerm_data_protection_backup_vault.cluster_backup_vault.identity[0].principal_id
+}
+
+# 6. Instance de backup GLOBAL (Gère tous les namespaces d'un coup)
+resource "azurerm_data_protection_backup_instance_kubernetes_cluster" "global_backup" {
+  name                         = "db-backup-global-${var.clustername}" # Nouveau nom unique
+  location                     = var.db_backup_region
+  vault_id                     = azurerm_data_protection_backup_vault.cluster_backup_vault.id
+  kubernetes_cluster_id        = data.azurerm_kubernetes_cluster.aks.id
+  snapshot_resource_group_name = azurerm_resource_group.backup_core_rg.name
+  backup_policy_id             = azurerm_data_protection_backup_policy_kubernetes_cluster.mongodb_policy.id
+
+  backup_datasource_parameters {
+    # C'est ici que la magie opère : on prend la liste complète
+    included_namespaces              = var.included_namespaces
+    included_resource_types          = ["statefulSet", "service", "persistentvolumeclaim", "secret", "configMap", "serviceaccount"]
+    cluster_scoped_resources_enabled = false
+    volume_snapshot_enabled          = true
+    label_selectors                  = []
+    excluded_namespaces              = []
+    excluded_resource_types          = []
+  }
+
+  # Dépendances explicites pour éviter les erreurs de droits lors de la création
+  depends_on = [
+    azurerm_role_assignment.extension_storage_access,
+    azurerm_role_assignment.vault_reader_cluster,
+    azurerm_role_assignment.cluster_snapshot_access,
+    azurerm_kubernetes_cluster_trusted_access_role_binding.backup_trusted_access
+  ]
+}
+
+
+
+
 # Outputs pour que les modules env les consomment
 output "backup_vault_id" {
   value = azurerm_data_protection_backup_vault.cluster_backup_vault.id
@@ -78,6 +187,10 @@ output "backup_db_bkp_rg" {
 
 output "backup_sa_name" {
   value = azurerm_storage_account.backup_sa.name
+}
+
+output "backup_vault_principal_id" {
+  value = azurerm_data_protection_backup_vault.cluster_backup_vault.identity[0].principal_id
 }
 
 output "backup_container_name" {
